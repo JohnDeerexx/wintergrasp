@@ -27,7 +27,6 @@ DoorData const Doors[] =
 {
     {GO_ICE_WALL,   DATA_GARFROST,  DOOR_TYPE_PASSAGE,  BOUNDARY_NONE},
     {GO_ICE_WALL,   DATA_ICK,       DOOR_TYPE_PASSAGE,  BOUNDARY_NONE},
-    {GO_HALLS_OF_REFLECTION_PORTCULLIS,   DATA_TYRANNUS,       DOOR_TYPE_PASSAGE,  BOUNDARY_NONE},
 };
 
 class instance_pit_of_saron : public InstanceMapScript
@@ -167,7 +166,6 @@ class instance_pit_of_saron : public InstanceMapScript
                 switch (go->GetEntry())
                 {
                     case GO_ICE_WALL:
-                    case GO_HALLS_OF_REFLECTION_PORTCULLIS:
                         AddDoor(go, true);
                         break;
                 }
@@ -178,7 +176,6 @@ class instance_pit_of_saron : public InstanceMapScript
                 switch (go->GetEntry())
                 {
                     case GO_ICE_WALL:
-                    case GO_HALLS_OF_REFLECTION_PORTCULLIS:
                         AddDoor(go, false);
                         break;
                 }

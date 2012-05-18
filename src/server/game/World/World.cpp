@@ -36,7 +36,6 @@
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "AuctionHouseMgr.h"
-#include "AuctionHouseBot.h"
 #include "ObjectMgr.h"
 #include "ArenaTeamMgr.h"
 #include "GuildMgr.h"
@@ -51,6 +50,7 @@
 #include "MapManager.h"
 #include "CreatureAIRegistry.h"
 #include "BattlegroundMgr.h"
+#include "BattlefieldMgr.h"
 #include "OutdoorPvPMgr.h"
 #include "TemporarySummon.h"
 #include "WaypointMovementGenerator.h"
@@ -1201,6 +1201,15 @@ void World::LoadConfigSettings(bool reload)
     m_bool_configs[CONFIG_PDUMP_NO_PATHS] = ConfigMgr::GetBoolDefault("PlayerDump.DisallowPaths", true);
     m_bool_configs[CONFIG_PDUMP_NO_OVERWRITE] = ConfigMgr::GetBoolDefault("PlayerDump.DisallowOverwrite", true);
 
+    // Wintergrasp
+    m_bool_configs[CONFIG_WINTERGRASP_ENABLE] = ConfigMgr::GetBoolDefault("Wintergrasp.Enable", false);
+    m_int_configs[CONFIG_WINTERGRASP_PLR_MAX] = ConfigMgr::GetIntDefault("Wintergrasp.PlayerMax", 100);
+    m_int_configs[CONFIG_WINTERGRASP_PLR_MIN] = ConfigMgr::GetIntDefault("Wintergrasp.PlayerMin", 0);
+    m_int_configs[CONFIG_WINTERGRASP_PLR_MIN_LVL] = ConfigMgr::GetIntDefault("Wintergrasp.PlayerMinLvl", 77);
+    m_int_configs[CONFIG_WINTERGRASP_BATTLETIME] = ConfigMgr::GetIntDefault("Wintergrasp.BattleTimer", 30);
+    m_int_configs[CONFIG_WINTERGRASP_NOBATTLETIME] = ConfigMgr::GetIntDefault("Wintergrasp.NoBattleTimer", 150);
+    m_int_configs[CONFIG_WINTERGRASP_RESTART_AFTER_CRASH] = ConfigMgr::GetIntDefault("Wintergrasp.CrashRestartTimer", 10);
+
     // call ScriptMgr if we're reloading the configuration
     if (reload)
         sScriptMgr->OnConfigLoad(reload);
@@ -1729,6 +1738,10 @@ void World::SetInitialWorldSettings()
     sLog->outString("Starting Outdoor PvP System");
     sOutdoorPvPMgr->InitOutdoorPvP();
 
+    ///- Initialize Battlefield
+    sLog->outString("Starting Battlefield System");
+    sBattlefieldMgr->InitBattlefield();
+
     sLog->outString("Loading Transports...");
     sMapMgr->LoadTransports();
 
@@ -1755,10 +1768,6 @@ void World::SetInitialWorldSettings()
     InitRandomBGResetTime();
 
     LoadCharacterNameData();
-	
-	sLog -> outString();
-    sLog -> outString ("Initializising Auction House Bot....");
-    auctionbot.Initialize();
 
     // possibly enable db logging; avoid massive startup spam by doing it here.
     if (sLog->GetLogDBLater())
@@ -1927,10 +1936,8 @@ void World::Update(uint32 diff)
     if (m_timers[WUPDATE_AUCTIONS].Passed())
     {
         m_timers[WUPDATE_AUCTIONS].Reset();
-        
-		auctionbot.Update();
-        
-		///- Update mails (return old mails with item, or delete them)
+
+        ///- Update mails (return old mails with item, or delete them)
         //(tested... works on win)
         if (++mail_timer > mail_timer_expires)
         {
@@ -2008,6 +2015,9 @@ void World::Update(uint32 diff)
 
     sOutdoorPvPMgr->Update(diff);
     RecordTimeDiff("UpdateOutdoorPvPMgr");
+
+    sBattlefieldMgr->Update(diff);
+    RecordTimeDiff("BattlefieldMgr");
 
     ///- Delete all characters which have been deleted X days before
     if (m_timers[WUPDATE_DELETECHARS].Passed())

@@ -36,6 +36,7 @@
 #include "CellImpl.h"
 #include "ScriptMgr.h"
 #include "Vehicle.h"
+#include "BattlefieldMgr.h"
 
 class Aura;
 //
@@ -594,7 +595,7 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
             if (GetSpellInfo()->SpellFamilyName == SPELLFAMILY_SHAMAN && m_spellInfo->SpellFamilyFlags[1] & 0x400)
             {
                 amount = caster->SpellHealingBonusDone(GetBase()->GetUnitOwner(), GetSpellInfo(), amount, SPELL_DIRECT_DAMAGE);
-                amount = GetBase()->GetUnitOwner()->SpellHealingBonusTaken(caster, GetSpellInfo(), amount, SPELL_DIRECT_DAMAGE);
+                amount = GetBase()->GetUnitOwner()->SpellHealingBonusTaken(GetSpellInfo(), amount, SPELL_DIRECT_DAMAGE);
             }
             break;
         case SPELL_AURA_PERIODIC_DAMAGE:
@@ -4886,8 +4887,12 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                         case 2584: // Waiting to Resurrect
                             // Waiting to resurrect spell cancel, we must remove player from resurrect queue
                             if (target->GetTypeId() == TYPEID_PLAYER)
+                            {
                                 if (Battleground* bg = target->ToPlayer()->GetBattleground())
                                     bg->RemovePlayerFromResurrectQueue(target->GetGUID());
+                                if(Battlefield* bf = sBattlefieldMgr->GetBattlefieldToZoneId(target->GetZoneId()))
+                                    bf->RemovePlayerFromResurrectQueue(target->GetGUID());
+                            }
                             break;
                         case 36730:                                     // Flame Strike
                         {
@@ -4924,6 +4929,7 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                             target->CastSpell((Unit*)NULL, GetAmount(), true, NULL, this);
                             break;
                         case 58600: // Restricted Flight Area
+                        case 58730: // Restricted Flight Area
                             if (aurApp->GetRemoveMode() == AURA_REMOVE_BY_EXPIRE)
                                 target->CastSpell(target, 58601, true);
                             break;
@@ -4968,7 +4974,7 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
                         if (caster)
                         {
                             heal = caster->SpellHealingBonusDone(target, GetSpellInfo(), heal, HEAL, stack);
-                            heal = target->SpellHealingBonusTaken(caster, GetSpellInfo(), heal, HEAL, stack);
+                            heal = target->SpellHealingBonusTaken(GetSpellInfo(), heal, HEAL, stack);
                         }
                         target->CastCustomSpell(target, 33778, &heal, &stack, NULL, true, NULL, this, GetCasterGUID());
 
@@ -5272,63 +5278,66 @@ void AuraEffect::HandleChannelDeathItem(AuraApplication const* aurApp, uint8 mod
     if (!(mode & AURA_EFFECT_HANDLE_REAL))
         return;
 
-    if (apply || aurApp->GetRemoveMode() != AURA_REMOVE_BY_DEATH)
-        return;
-
-    Unit* caster = GetCaster();
-
-    if (!caster || caster->GetTypeId() != TYPEID_PLAYER)
-        return;
-
-    Player* plCaster = caster->ToPlayer();
-    Unit* target = aurApp->GetTarget();
-
-    // Item amount
-    if (GetAmount() <= 0)
-        return;
-
-    if (GetSpellInfo()->Effects[m_effIndex].ItemType == 0)
-        return;
-
-    // Soul Shard
-    if (GetSpellInfo()->Effects[m_effIndex].ItemType == 6265)
+    if (!apply)
     {
-        // Soul Shard only from units that grant XP or honor
-        if (!plCaster->isHonorOrXPTarget(target) ||
-            (target->GetTypeId() == TYPEID_UNIT && !target->ToCreature()->isTappedBy(plCaster)))
+        Unit* caster = GetCaster();
+
+        if (!caster || caster->GetTypeId() != TYPEID_PLAYER)
             return;
 
-        // If this is Drain Soul, check for Glyph of Drain Soul
-        if (GetSpellInfo()->SpellFamilyName == SPELLFAMILY_WARLOCK && (GetSpellInfo()->SpellFamilyFlags[0] & 0x00004000))
+        Player* plCaster = caster->ToPlayer();
+        Unit* target = aurApp->GetTarget();
+
+        if (target->getDeathState() != JUST_DIED)
+            return;
+
+        // Item amount
+        if (GetAmount() <= 0)
+            return;
+
+        if (GetSpellInfo()->Effects[m_effIndex].ItemType == 0)
+            return;
+
+        // Soul Shard
+        if (GetSpellInfo()->Effects[m_effIndex].ItemType == 6265)
         {
-            // Glyph of Drain Soul - chance to create an additional Soul Shard
-            if (AuraEffect* aur = caster->GetAuraEffect(58070, 0))
-                if (roll_chance_i(aur->GetMiscValue()))
-                    caster->CastSpell(caster, 58068, true, 0, aur); // We _could_ simply do ++count here, but Blizz does it this way :)
+            // Soul Shard only from units that grant XP or honor
+            if (!plCaster->isHonorOrXPTarget(target) ||
+                (target->GetTypeId() == TYPEID_UNIT && !target->ToCreature()->isTappedBy(plCaster)))
+                return;
+
+            // If this is Drain Soul, check for Glyph of Drain Soul
+            if (GetSpellInfo()->SpellFamilyName == SPELLFAMILY_WARLOCK && (GetSpellInfo()->SpellFamilyFlags[0] & 0x00004000))
+            {
+                // Glyph of Drain Soul - chance to create an additional Soul Shard
+                if (AuraEffect* aur = caster->GetAuraEffect(58070, 0))
+                    if (roll_chance_i(aur->GetMiscValue()))
+                        caster->CastSpell(caster, 58068, true, 0, aur); // We _could_ simply do ++count here, but Blizz does it this way :)
+            }
         }
-    }
 
-    //Adding items
-    uint32 noSpaceForCount = 0;
-    uint32 count = m_amount;
+        //Adding items
+        uint32 noSpaceForCount = 0;
+        uint32 count = m_amount;
 
-    ItemPosCountVec dest;
-    InventoryResult msg = plCaster->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, GetSpellInfo()->Effects[m_effIndex].ItemType, count, &noSpaceForCount);
-    if (msg != EQUIP_ERR_OK)
-    {
-        count-=noSpaceForCount;
-        plCaster->SendEquipError(msg, NULL, NULL, GetSpellInfo()->Effects[m_effIndex].ItemType);
-        if (count == 0)
+        ItemPosCountVec dest;
+        InventoryResult msg = plCaster->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, GetSpellInfo()->Effects[m_effIndex].ItemType, count, &noSpaceForCount);
+        if (msg != EQUIP_ERR_OK)
+        {
+            count-=noSpaceForCount;
+            plCaster->SendEquipError(msg, NULL, NULL, GetSpellInfo()->Effects[m_effIndex].ItemType);
+            if (count == 0)
+                return;
+        }
+
+        Item* newitem = plCaster->StoreNewItem(dest, GetSpellInfo()->Effects[m_effIndex].ItemType, true);
+        if (!newitem)
+        {
+            plCaster->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
             return;
+        }
+        plCaster->SendNewItem(newitem, count, true, true);
     }
-
-    Item* newitem = plCaster->StoreNewItem(dest, GetSpellInfo()->Effects[m_effIndex].ItemType, true);
-    if (!newitem)
-    {
-        plCaster->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, NULL, NULL);
-        return;
-    }
-    plCaster->SendNewItem(newitem, count, true, true);
 }
 
 void AuraEffect::HandleBindSight(AuraApplication const* aurApp, uint8 mode, bool apply) const
@@ -6195,7 +6204,7 @@ void AuraEffect::HandlePeriodicDamageAurasTick(Unit* target, Unit* caster) const
     if (GetAuraType() == SPELL_AURA_PERIODIC_DAMAGE)
     {
         damage = caster->SpellDamageBonusDone(target, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
-        damage = target->SpellDamageBonusTaken(caster, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
+        damage = target->SpellDamageBonusTaken(GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
 
         // Calculate armor mitigation
         if (Unit::IsDamageReducedByArmor(GetSpellInfo()->GetSchoolMask(), GetSpellInfo(), GetEffIndex()))
@@ -6307,7 +6316,7 @@ void AuraEffect::HandlePeriodicHealthLeechAuraTick(Unit* target, Unit* caster) c
     uint32 damage = std::max(GetAmount(), 0);
 
     damage = caster->SpellDamageBonusDone(target, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
-    damage = target->SpellDamageBonusTaken(caster, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
+    damage = target->SpellDamageBonusTaken(GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
 
     bool crit = IsPeriodicTickCrit(target, caster);
     if (crit)
@@ -6350,7 +6359,7 @@ void AuraEffect::HandlePeriodicHealthLeechAuraTick(Unit* target, Unit* caster) c
         float gainMultiplier = GetSpellInfo()->Effects[GetEffIndex()].CalcValueMultiplier(caster);
 
         uint32 heal = uint32(caster->SpellHealingBonusDone(caster, GetSpellInfo(), uint32(new_damage * gainMultiplier), DOT, GetBase()->GetStackAmount()));
-        heal = uint32(caster->SpellHealingBonusTaken(caster, GetSpellInfo(), heal, DOT, GetBase()->GetStackAmount()));
+        heal = uint32(caster->SpellHealingBonusTaken(GetSpellInfo(), heal, DOT, GetBase()->GetStackAmount()));
 
         int32 gain = caster->HealBySpell(caster, GetSpellInfo(), heal);
         caster->getHostileRefManager().threatAssist(caster, gain * 0.5f, GetSpellInfo());
@@ -6454,8 +6463,8 @@ void AuraEffect::HandlePeriodicHealAurasTick(Unit* target, Unit* caster) const
             damage += addition;
         }
 
-        damage = caster->SpellHealingBonusDone(target, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
-        damage = target->SpellHealingBonusTaken(caster, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
+        damage = caster->SpellDamageBonusDone(target, GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
+        damage = target->SpellHealingBonusTaken(GetSpellInfo(), damage, DOT, GetBase()->GetStackAmount());
     }
 
     bool crit = IsPeriodicTickCrit(target, caster);
@@ -6746,7 +6755,7 @@ void AuraEffect::HandleProcTriggerDamageAuraProc(AuraApplication* aurApp, ProcEv
     Unit* triggerTarget = eventInfo.GetProcTarget();
     SpellNonMeleeDamage damageInfo(target, triggerTarget, GetId(), GetSpellInfo()->SchoolMask);
     uint32 damage = target->SpellDamageBonusDone(triggerTarget, GetSpellInfo(), GetAmount(), SPELL_DIRECT_DAMAGE);
-    damage = triggerTarget->SpellDamageBonusTaken(target, GetSpellInfo(), damage, SPELL_DIRECT_DAMAGE);
+    damage = triggerTarget->SpellDamageBonusTaken(GetSpellInfo(), damage, SPELL_DIRECT_DAMAGE);
     target->CalculateSpellDamageTaken(&damageInfo, damage, GetSpellInfo());
     target->DealDamageMods(damageInfo.target, damageInfo.damage, &damageInfo.absorb);
     target->SendSpellNonMeleeDamageLog(&damageInfo);

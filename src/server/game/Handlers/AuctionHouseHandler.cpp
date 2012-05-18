@@ -23,7 +23,6 @@
 #include "WorldSession.h"
 
 #include "AuctionHouseMgr.h"
-#include "AuctionHouseBot.h"
 #include "Log.h"
 #include "Opcodes.h"
 #include "UpdateMask.h"

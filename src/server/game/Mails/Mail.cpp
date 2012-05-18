@@ -26,7 +26,6 @@
 #include "BattlegroundMgr.h"
 #include "Item.h"
 #include "AuctionHouseMgr.h"
-#include "AuctionHouseBot.h"
 
 MailSender::MailSender(Object* sender, MailStationery stationery) : m_stationery(stationery)
 {
@@ -179,16 +178,7 @@ void MailDraft::SendMailTo(SQLTransaction& trans, MailReceiver const& receiver, 
 
     uint32 mailId = sObjectMgr->GenerateMailID();
 
-    /* AuctionHouse Bot Function */
-        if (receiver.GetPlayerGUIDLow() ==auctionbot.GetAHBplayerGUID())
-   {
-        if (sender.GetMailMessageType() == MAIL_AUCTION)
-           deleteIncludedItems(trans, true);
-        return;
-   }
-    /*End AuctionHouse Bot Function */
-	
-	time_t deliver_time = time(NULL) + deliver_delay;
+    time_t deliver_time = time(NULL) + deliver_delay;
 
     //expire time if COD 3 days, if no COD 30 days, if auction sale pending 1 hour
     uint32 expire_delay;

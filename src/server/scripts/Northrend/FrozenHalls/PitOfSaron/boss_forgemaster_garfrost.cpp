@@ -20,15 +20,14 @@
 
 enum Yells
 {
-    SAY_AGGRO             = 0,
-    SAY_PHASE2            = 1,
-    SAY_PHASE3            = 2,
-    SAY_DEATH             = 3,
-    SAY_SLAY              = 4,
-    SAY_THROW_SARONITE    = 5,
-    SAY_CAST_DEEP_FREEZE  = 6,
+    SAY_AGGRO           = -1658001,
+    SAY_SLAY_1          = -1658002,
+    SAY_SLAY_2          = -1658003,
+    SAY_DEATH           = -1658004,
+    SAY_PHASE2          = -1658005,
+    SAY_PHASE3          = -1658006,
 
-    SAY_TYRANNUS_DEATH  = -1658007, // todo
+    SAY_TYRANNUS_DEATH  = -1658007,
 };
 
 enum Spells
@@ -108,9 +107,8 @@ class boss_garfrost : public CreatureScript
 
             void EnterCombat(Unit* /*who*/)
             {
-                Talk(SAY_AGGRO);
+                DoScriptText(SAY_AGGRO, me);
                 DoCast(me, SPELL_PERMAFROST);
-                me->CallForHelp(70.0f);
                 events.ScheduleEvent(EVENT_THROW_SARONITE, 7000);
 
                 instance->SetBossState(DATA_GARFROST, IN_PROGRESS);
@@ -119,13 +117,12 @@ class boss_garfrost : public CreatureScript
             void KilledUnit(Unit* victim)
             {
                 if (victim->GetTypeId() == TYPEID_PLAYER)
-                    Talk(SAY_SLAY);
+                    DoScriptText(RAND(SAY_SLAY_1, SAY_SLAY_2), me);
             }
 
             void JustDied(Unit* /*killer*/)
             {
-                Talk(SAY_DEATH);
-
+                DoScriptText(SAY_DEATH, me);
                 if (Creature* tyrannus = me->GetCreature(*me, instance->GetData64(DATA_TYRANNUS)))
                     DoScriptText(SAY_TYRANNUS_DEATH, tyrannus);
 
@@ -137,7 +134,6 @@ class boss_garfrost : public CreatureScript
                 if (events.GetPhaseMask() & PHASE_ONE_MASK && !HealthAbovePct(66))
                 {
                     events.SetPhase(PHASE_TWO);
-                    Talk(SAY_PHASE2);
                     events.DelayEvents(8000);
                     DoCast(me, SPELL_THUNDERING_STOMP);
                     events.ScheduleEvent(EVENT_JUMP, 1500);
@@ -147,7 +143,6 @@ class boss_garfrost : public CreatureScript
                 if (events.GetPhaseMask() & PHASE_TWO_MASK && !HealthAbovePct(33))
                 {
                     events.SetPhase(PHASE_THREE);
-                    Talk(SAY_PHASE3);
                     events.DelayEvents(8000);
                     DoCast(me, SPELL_THUNDERING_STOMP);
                     events.ScheduleEvent(EVENT_JUMP, 1500);
@@ -204,10 +199,7 @@ class boss_garfrost : public CreatureScript
                     {
                         case EVENT_THROW_SARONITE:
                             if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0))
-                            {
-                                Talk(SAY_THROW_SARONITE);
                                 DoCast(target, SPELL_THROW_SARONITE);
-                            }
                             events.ScheduleEvent(EVENT_THROW_SARONITE, urand(12500, 20000));
                             break;
                         case EVENT_CHILLING_WAVE:
@@ -216,10 +208,7 @@ class boss_garfrost : public CreatureScript
                             break;
                         case EVENT_DEEP_FREEZE:
                             if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0))
-                            {
-                                Talk(SAY_CAST_DEEP_FREEZE);
                                 DoCast(target, SPELL_DEEP_FREEZE);
-                            }
                             events.ScheduleEvent(EVENT_DEEP_FREEZE, 35000, 0, PHASE_THREE);
                             break;
                         case EVENT_JUMP:
